@@ -1,5 +1,132 @@
-<a href="https://fastgpt.app/" >fastgpt</a>
-<br>
-<a href="https://docs.unrealengine.com/" >unrealengine</a>
-<br>
-<a href="https://chat.openai.com/chat" >chatgpt</a>
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>科技感页面</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            color: #00ffff;
+            font-family: 'Arial', sans-serif;
+            background: #000814;
+        }
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            background: linear-gradient(to bottom, #000814, #001233);
+        }
+        .content {
+            position: relative;
+            padding: 2rem;
+            z-index: 1;
+            background: rgba(0, 8, 20, 0.3);
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+            margin: 20px;
+        }
+        .title {
+            font-size: 3rem;
+            text-shadow: 0 0 10px #00ffff;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        @keyframes glow {
+            from {
+                text-shadow: 0 0 10px #00ffff;
+            }
+            to {
+                text-shadow: 0 0 20px #00ffff, 0 0 30px #00ffff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <!-- <div class="content">
+        <h1 class="title">未来科技</h1>
+        <p>欢迎来到未来世界</p>
+    </div> -->
+
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000814);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({
+            canvas: document.querySelector('#canvas'),
+            alpha: true
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // 修改粒子系统
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particlesCount = 15000; // 增加粒子数量
+        const posArray = new Float32Array(particlesCount * 3);
+        const velocityArray = new Float32Array(particlesCount); // 添加速度数组
+
+        // 初始化粒子位置
+        for(let i = 0; i < particlesCount * 3; i += 3) {
+            // 将粒子分布在一个圆柱体中
+            const radius = Math.random() * 2;
+            const theta = Math.random() * Math.PI * 2;
+            const z = (Math.random() - 0.5) * 20; // 加大z轴范围
+            
+            posArray[i] = radius * Math.cos(theta);
+            posArray[i + 1] = radius * Math.sin(theta);
+            posArray[i + 2] = z;
+            
+            // 设置粒子速度
+            velocityArray[i/3] = Math.random() * 0.05 + 0.02;
+        }
+
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+        const particlesMaterial = new THREE.PointsMaterial({
+            size: 0.01,
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.8,
+            sizeAttenuation: true
+        });
+
+        const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particlesMesh);
+
+        camera.position.z = 2;
+
+        // 修改动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const positions = particlesGeometry.attributes.position.array;
+            
+            // 更新粒子位置
+            for(let i = 0; i < positions.length; i += 3) {
+                // 移动粒子
+                positions[i + 2] += velocityArray[i/3];
+                
+                // 如果粒子移动到太远，将其重置到起始位置
+                if(positions[i + 2] > 10) {
+                    positions[i + 2] = -10;
+                    positions[i] = (Math.random() - 0.5) * 4;
+                    positions[i + 1] = (Math.random() - 0.5) * 4;
+                }
+            }
+            
+            particlesGeometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 响应窗口大小变化
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
