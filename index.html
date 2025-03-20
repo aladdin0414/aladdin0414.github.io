@@ -1,132 +1,504 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LIYACHUN.COM</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <title>三阶魔方</title>
     <style>
-        body {
+        html, body {
             margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
-            color: #00ffff;
-            font-family: 'Arial', sans-serif;
-            background: #000814;
         }
-        #canvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: -1;
-            background: linear-gradient(to bottom, #000814, #001233);
-        }
-        .content {
-            position: relative;
-            padding: 2rem;
-            z-index: 1;
-            background: rgba(0, 8, 20, 0.3);
-            border-radius: 10px;
-            backdrop-filter: blur(5px);
-            margin: 20px;
-        }
-        .title {
-            font-size: 3rem;
-            text-shadow: 0 0 10px #00ffff;
-            animation: glow 2s ease-in-out infinite alternate;
-        }
-        @keyframes glow {
-            from {
-                text-shadow: 0 0 10px #00ffff;
-            }
-            to {
-                text-shadow: 0 0 20px #00ffff, 0 0 30px #00ffff;
-            }
+        canvas { 
+            display: block;
+            width: 100%;
+            height: 100%;
         }
     </style>
+
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-    <!-- <div class="content">
-        <h1 class="title">未来科技</h1>
-        <p>欢迎来到未来世界</p>
-    </div> -->
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
     <script>
+        // 初始化场景、相机和渲染器
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000814);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({
-            canvas: document.querySelector('#canvas'),
-            alpha: true
-        });
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; // 启用阴影
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // 使用软阴影
+        document.body.appendChild(renderer.domElement);
 
-        // 修改粒子系统
-        const particlesGeometry = new THREE.BufferGeometry();
-        const particlesCount = 15000; // 增加粒子数量
-        const posArray = new Float32Array(particlesCount * 3);
-        const velocityArray = new Float32Array(particlesCount); // 添加速度数组
+        // 添加轨道控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // 添加阻尼效果
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 5;
+        controls.maxDistance = 20;
+        controls.maxPolarAngle = Math.PI / 2; // 限制相机不能旋转到平面底部
+        controls.minPolarAngle = 0; // 限制相机不能旋转到平面顶部
+        controls.enableZoom = true; // 允许缩放
+        controls.enablePan = true; // 允许平移
+        controls.rotateSpeed = 1.0; // 旋转速度
+        controls.zoomSpeed = 1.0; // 缩放速度
+        controls.panSpeed = 1.0; // 平移速度
+        // 限制相机只能在y轴旋转
+        // 启用相机自动旋转
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 2.0; // 设置自动旋转速度,正值为逆时针,负值为顺时针
 
-        // 初始化粒子位置
-        for(let i = 0; i < particlesCount * 3; i += 3) {
-            // 将粒子分布在一个圆柱体中
-            const radius = Math.random() * 2;
-            const theta = Math.random() * Math.PI * 2;
-            const z = (Math.random() - 0.5) * 20; // 加大z轴范围
-            
-            posArray[i] = radius * Math.cos(theta);
-            posArray[i + 1] = radius * Math.sin(theta);
-            posArray[i + 2] = z;
-            
-            // 设置粒子速度
-            velocityArray[i/3] = Math.random() * 0.05 + 0.02;
+        // 创建射线检测器
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // 鼠标滑动检测变量
+        let isCtrlPressed = false;
+        let isMousePressed = false;
+        let startX = 0;
+        let startY = 0;
+
+        // 选中的小方块
+        let selectedCubelet = null;
+        let hasPrintedDirection = false; // 添加标志，记录是否已打印方向
+        let lastDirection = null; // 记录上一次的滑动方向
+        let isAnimating = false; // 添加标志，记录是否正在动画中
+        const minSwipeDistance = 10; // 最小滑动距离
+
+        // 监听 Ctrl 键
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Control') {
+                controls.enabled = false; // 禁用 OrbitControls
+                isCtrlPressed = true;
+            }
+        });
+
+        document.addEventListener('keyup', (event) => {
+            if (event.key === 'Control') {
+                controls.enabled = true; // 启用 OrbitControls
+                isCtrlPressed = false;
+            }
+        });
+
+        // 更新鼠标位置
+        function updateMousePosition(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         }
 
-        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-
-        const particlesMaterial = new THREE.PointsMaterial({
-            size: 0.01,
-            color: 0x00ffff,
-            transparent: true,
-            opacity: 0.8,
-            sizeAttenuation: true
-        });
-
-        const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
-        scene.add(particlesMesh);
-
-        camera.position.z = 2;
-
-        // 修改动画循环
-        function animate() {
-            requestAnimationFrame(animate);
+        // 检查是否点击到魔方小方块
+        function checkCubeletIntersection() {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(cube.children);
             
-            const positions = particlesGeometry.attributes.position.array;
-            
-            // 更新粒子位置
-            for(let i = 0; i < positions.length; i += 3) {
-                // 移动粒子
-                positions[i + 2] += velocityArray[i/3];
-                
-                // 如果粒子移动到太远，将其重置到起始位置
-                if(positions[i + 2] > 10) {
-                    positions[i + 2] = -10;
-                    positions[i] = (Math.random() - 0.5) * 4;
-                    positions[i + 1] = (Math.random() - 0.5) * 4;
+            if (intersects.length > 0) {
+                return intersects[0].object;
+            }
+            return null;
+        }
+
+        // 监听鼠标按下
+        document.addEventListener('mousedown', (event) => {
+
+            if (isCtrlPressed) {
+                updateMousePosition(event);
+                selectedCubelet = checkCubeletIntersection();
+                if (selectedCubelet) {
+                    isMousePressed = true;
+                    startX = event.clientX;
+                    startY = event.clientY;
+                    hasPrintedDirection = false; // 重置打印标志
                 }
             }
+        });
+
+        // 监听鼠标移动
+        document.addEventListener('mousemove', (event) => {
+            if (isMousePressed && isCtrlPressed && selectedCubelet && !hasPrintedDirection && !isAnimating) {
+                const deltaX = event.clientX - startX;
+                const deltaY = event.clientY - startY;
+                
+                // 判断滑动方向
+                if (Math.abs(deltaX) > minSwipeDistance || Math.abs(deltaY) > minSwipeDistance) {
+                    let currentDirection = null;
+                    
+                    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                        // 水平滑动
+                        currentDirection = deltaX > 0 ? '右滑' : '左滑';
+
+                        if (currentDirection === '右滑' || currentDirection === '左滑') {
+                            isAnimating = true; // 设置动画标志
+                            // 获取选中小块的y坐标
+                            const selectedY = selectedCubelet.position.y;
+                            
+                            // 找出所有y坐标相同的小块
+                            const sameYCubelets = cube.children.filter(cubelet => {
+                                return Math.abs(cubelet.position.y - selectedY) < 0.1; // 使用小数值来处理浮点数比较
+                            });
+
+                            // 创建一个组来包含所有需要旋转的方块
+                            const rotationGroup = new THREE.Group();
+                            
+                            // 将所有同y轴的方块添加到组中
+                            sameYCubelets.forEach(cubelet => {
+                                // 保存方块的世界坐标
+                                const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
+                                const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
+                                
+                                // 从原来的父对象中移除
+                                cube.remove(cubelet);
+                                // 添加到旋转组
+                                rotationGroup.add(cubelet);
+                                
+                                // 恢复世界坐标
+                                cubelet.position.copy(worldPosition);
+                                cubelet.quaternion.copy(worldQuaternion);
+                            });
+                            
+                            // 将旋转组添加到场景
+                            scene.add(rotationGroup);
+                            
+                            // 设置旋转动画
+                            const startRotation = rotationGroup.rotation.y;
+                            const targetRotation = startRotation + (currentDirection === '右滑' ? Math.PI/2 : -Math.PI/2);
+                            const duration = 500; // 动画持续时间（毫秒）
+                            const startTime = Date.now();
+
+                            function animateRotation() {
+                                const currentTime = Date.now();
+                                const elapsed = currentTime - startTime;
+                                const progress = Math.min(elapsed / duration, 1);
+
+                                // 使用缓动函数使动画更平滑
+                                const easeProgress = progress < 0.5
+                                    ? 2 * progress * progress
+                                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+                                rotationGroup.rotation.y = startRotation + (targetRotation - startRotation) * easeProgress;
+
+                                if (progress < 1) {
+                                    requestAnimationFrame(animateRotation);
+                                } else {
+                                    // 动画完成后，将方块放回原来的魔方组中
+                                    sameYCubelets.forEach(cubelet => {
+                                        const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
+                                        const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
+                                        
+                                        rotationGroup.remove(cubelet);
+                                        cube.add(cubelet);
+                                        
+                                        cubelet.position.copy(worldPosition);
+                                        cubelet.quaternion.copy(worldQuaternion);
+                                    });
+                                    
+                                    // 从场景中移除旋转组
+                                    scene.remove(rotationGroup);
+                                    isAnimating = false; // 动画结束，重置标志
+                                }
+                            }
+
+                            // 开始动画
+                            animateRotation();
+                            
+                            console.log('同一y轴的小块:', sameYCubelets);
+                        }
+                    } else {
+                        // 垂直滑动
+                        currentDirection = deltaY > 0 ? '下滑' : '上滑';
+
+                        if (currentDirection === '上滑' || currentDirection === '下滑') {
+                            isAnimating = true; // 设置动画标志
+                            
+                            // 获取相机方向
+                            const cameraDirection = new THREE.Vector3();
+                            camera.getWorldDirection(cameraDirection);
+                            
+                            // 获取选中小块的局部坐标
+                            const localPosition = selectedCubelet.position;
+                            
+                            // 判断选中小块在哪个面上
+                            let selectedAxis = null;
+                            let selectedValue = null;
+                            let sameAxisCubelets = [];
+                            
+                            // 计算相机方向在XZ平面上的投影
+                            const cameraXZ = new THREE.Vector2(cameraDirection.x, cameraDirection.z).normalize();
+                            
+                            // 判断相机是更接近X轴还是Z轴
+                            if (Math.abs(cameraXZ.x) > Math.abs(cameraXZ.y)) {
+                                // 相机更接近X轴，旋转前后面（Z轴）
+                                selectedAxis = 'z';
+                                selectedValue = localPosition.z;
+                            } else {
+                                // 相机更接近Z轴，旋转左右面（X轴）
+                                selectedAxis = 'x';
+                                selectedValue = localPosition.x;
+                            }
+
+                            console.log(selectedAxis);
+
+                            // 找出所有在同一面上的小块
+                            sameAxisCubelets = cube.children.filter(cubelet => {
+                                return Math.abs(cubelet.position[selectedAxis] - selectedValue) < 0.1;
+                            });
+
+                            // 创建一个组来包含所有需要旋转的方块
+                            const rotationGroup = new THREE.Group();
+                            
+                            // 将所有同轴的方块添加到组中
+                            sameAxisCubelets.forEach(cubelet => {
+                                // 保存方块的世界坐标
+                                const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
+                                const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
+                                
+                                // 从原来的父对象中移除
+                                cube.remove(cubelet);
+                                // 添加到旋转组
+                                rotationGroup.add(cubelet);
+                                
+                                // 恢复世界坐标
+                                cubelet.position.copy(worldPosition);
+                                cubelet.quaternion.copy(worldQuaternion);
+                            });
+                            
+                            // 将旋转组添加到场景
+                            scene.add(rotationGroup);
+                            
+                            // 设置旋转动画
+                            const startRotation = rotationGroup.rotation[selectedAxis];
+                            
+                            // 根据相机方向调整旋转方向
+                            let rotationDirection = 1;
+                            if (selectedAxis === 'x') {
+                                // 对于X轴旋转，根据相机Z方向调整
+                                rotationDirection = cameraDirection.z > 0 ? -1 : 1;
+                                // 如果相机在正上方或正下方，根据Y方向调整
+                                if (Math.abs(cameraDirection.y) > 0.9) {
+                                    // 90度的情况
+                                    rotationDirection = cameraDirection.y > 0 ? 1 : -1;
+                                }
+                            } else if (selectedAxis === 'z') {
+                                // 对于Z轴旋转，根据相机X方向调整
+                                rotationDirection = cameraDirection.x > 0 ? 1 : -1;
+                                // 如果相机在正上方或正下方，根据Y方向调整
+                                if (Math.abs(cameraDirection.y) > 0.9) {
+                                    // 90度的情况
+                                    rotationDirection = cameraDirection.y > 0 ? -1 : 1;
+                                }
+                            }
+
+                            const targetRotation = startRotation + (currentDirection === '下滑' ? Math.PI/2 : -Math.PI/2) * rotationDirection;
+                            const duration = 500; // 动画持续时间（毫秒）
+                            const startTime = Date.now();
+
+                            function animateRotation() {
+                                const currentTime = Date.now();
+                                const elapsed = currentTime - startTime;
+                                const progress = Math.min(elapsed / duration, 1);
+
+                                // 使用缓动函数使动画更平滑
+                                const easeProgress = progress < 0.5
+                                    ? 2 * progress * progress
+                                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+                                rotationGroup.rotation[selectedAxis] = startRotation + (targetRotation - startRotation) * easeProgress;
+
+                                if (progress < 1) {
+                                    requestAnimationFrame(animateRotation);
+                                } else {
+                                    // 动画完成后，将方块放回原来的魔方组中
+                                    sameAxisCubelets.forEach(cubelet => {
+                                        const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
+                                        const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
+                                        
+                                        rotationGroup.remove(cubelet);
+                                        cube.add(cubelet);
+                                        
+                                        cubelet.position.copy(worldPosition);
+                                        cubelet.quaternion.copy(worldQuaternion);
+                                    });
+                                    
+                                    // 从场景中移除旋转组
+                                    scene.remove(rotationGroup);
+                                    isAnimating = false; // 动画结束，重置标志
+                                }
+                            }
+
+                            // 开始动画
+                            animateRotation();
+                            
+                            console.log('同一' + selectedAxis + '轴的小块:', sameAxisCubelets);
+                        }
+                    }
+
+                    // 只有当方向发生变化时才打印
+                    if (currentDirection !== lastDirection) {
+                        console.log(currentDirection);
+                        lastDirection = currentDirection;
+                        hasPrintedDirection = true;
+                    }
+                }
+            }
+        });
+
+        // 监听鼠标松开
+        document.addEventListener('mouseup', () => {
+            isMousePressed = false;
+            selectedCubelet = null;
+            hasPrintedDirection = false;
+            lastDirection = null; // 重置上一次的方向
+            if (!isAnimating) { // 只有在没有动画进行时才重置这些状态
+                isAnimating = false;
+            }
+        });
+
+        // 创建魔方的材质
+        const materials = [
+            new THREE.MeshPhongMaterial({ color: 0xff0000, shininess: 100 }), // 红
+            new THREE.MeshPhongMaterial({ color: 0x00ff00, shininess: 100 }), // 绿
+            new THREE.MeshPhongMaterial({ color: 0x0000ff, shininess: 100 }), // 蓝
+            new THREE.MeshPhongMaterial({ color: 0xffff00, shininess: 100 }), // 黄
+            new THREE.MeshPhongMaterial({ color: 0xffa500, shininess: 100 }), // 橙
+            new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 100 })  // 白
+        ];
+
+        // 创建灰色材质（用于内部面）
+        const grayMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x808080, 
+            shininess: 0 
+        });
+
+        // 创建地面
+        const groundGeometry = new THREE.PlaneGeometry(200, 200);
+        const groundMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0xcccccc,
+            shininess: 0,
+            side: THREE.DoubleSide
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2; // 使平面水平
+        ground.position.y = -10; // 将地面放在魔方下方
+        ground.receiveShadow = true; // 接收阴影
+        scene.add(ground);
+
+        // 魔方参数
+        const cubeletSize = 1.8; // 小方块大小
+        const gap = 0.2; // 间隙大小
+        const spacing = cubeletSize + gap; // 总间距
+
+        // 创建单个小方块
+        function createCubelet(x, y, z) {
+            const geometry = new THREE.BoxGeometry(cubeletSize, cubeletSize, cubeletSize);
             
-            particlesGeometry.attributes.position.needsUpdate = true;
+            // 创建六个面的材质
+            const cubeMaterials = [
+                x === 1 ? materials[0] : grayMaterial,  // 右面 - 红
+                x === -1 ? materials[1] : grayMaterial, // 左面 - 绿
+                y === 1 ? materials[2] : grayMaterial,  // 顶面 - 蓝
+                y === -1 ? materials[3] : grayMaterial, // 底面 - 黄
+                z === 1 ? materials[4] : grayMaterial,  // 前面 - 橙
+                z === -1 ? materials[5] : grayMaterial  // 后面 - 白
+            ];
+            
+            const cubelet = new THREE.Mesh(geometry, cubeMaterials);
+            cubelet.position.set(x * spacing, y * spacing, z * spacing);
+            cubelet.castShadow = true; // 投射阴影
+            return cubelet;
+        }
+
+        // 创建整个魔方
+        const cube = new THREE.Group();
+        for (let x = -1; x <= 1; x++) {
+            for (let y = -1; y <= 1; y++) {
+                for (let z = -1; z <= 1; z++) {
+                    const cubelet = createCubelet(x, y, z);
+                    cube.add(cubelet);
+                }
+            }
+        }
+        scene.add(cube);
+
+        // 添加坐标轴辅助器
+        const axesHelper = new THREE.AxesHelper(10);
+        // cube.add(axesHelper);
+
+        // 添加坐标轴标签
+        const createLabel = (text, position, color) => {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 64;
+            canvas.height = 32;
+            
+            context.fillStyle = color;
+            context.font = '24px Arial';
+            context.fillText(text, 0, 24);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(material);
+            sprite.position.copy(position);
+            sprite.scale.set(1, 0.5, 1);
+            return sprite;
+        };
+
+        // 创建 X、Y、Z 轴标签
+        const xLabel = createLabel('X', new THREE.Vector3(6, 0, 0), '#ff0000');
+        const yLabel = createLabel('Y', new THREE.Vector3(0, 6, 0), '#00ff00');
+        const zLabel = createLabel('Z', new THREE.Vector3(0, 0, 6), '#0000ff');
+        
+        // cube.add(xLabel);
+        // cube.add(yLabel);
+        // cube.add(zLabel);
+
+        // 设置相机位置
+        camera.position.set(30, 10, 0);
+        camera.lookAt(0, 0, 0);
+
+        // 旋转魔方到标准位置
+        // cube.rotation.x = -Math.PI / 4; // 旋转45度，使白色面朝上
+        // cube.rotation.y = Math.PI / 4;  // 旋转45度，使红色面朝前
+
+        // 添加环境光
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        // 添加平行光
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 5, 5);
+        directionalLight.castShadow = true; // 启用阴影投射
+        directionalLight.shadow.mapSize.width = 1024;
+        directionalLight.shadow.mapSize.height = 1024;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 50;
+        directionalLight.shadow.camera.left = -10;
+        directionalLight.shadow.camera.right = 10;
+        directionalLight.shadow.camera.top = 10;
+        directionalLight.shadow.camera.bottom = -10;
+        scene.add(directionalLight);
+
+        // 添加第二个平行光以增加光照效果
+        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight2.position.set(-5, -5, -5);
+        scene.add(directionalLight2);
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); // 更新控制器
             renderer.render(scene, camera);
         }
-        animate();
 
-        // 响应窗口大小变化
+        // 窗口大小调整
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
+
+        animate();
     </script>
 </body>
 </html>
