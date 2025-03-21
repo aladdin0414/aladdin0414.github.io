@@ -1,27 +1,63 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <title>LIYACHUN.COM</title>
+    <title>三阶魔方</title>
     <style>
-        html, body {
+        html,
+        body {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
             overflow: hidden;
         }
-        canvas { 
+
+        canvas {
             display: block;
             width: 100%;
             height: 100%;
         }
+
+        #tip {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            font-family: Arial, sans-serif;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 5px;
+            pointer-events: none;
+        }
+
+        #scrambleButton {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #scrambleButton:hover {
+            background-color: #45a049;
+        }
     </style>
 
 </head>
+
 <body>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <!-- <div id="tip">Hold Ctrl to rotate cube</div> -->
+    <button id="scrambleButton">Scramble</button>
+    <script src="js/three.min.js"></script>
+    <script src="js/OrbitControls.js"></script>
+    <script src="js/tween.umd.js"></script>
     <script>
         // 初始化场景、相机和渲染器
         const scene = new THREE.Scene();
@@ -39,321 +75,13 @@
         controls.screenSpacePanning = false;
         controls.minDistance = 5;
         controls.maxDistance = 20;
-        controls.maxPolarAngle = Math.PI / 2; // 限制相机不能旋转到平面底部
-        controls.minPolarAngle = 0; // 限制相机不能旋转到平面顶部
+        // controls.maxPolarAngle = Math.PI / 2; // 限制相机不能旋转到平面底部
+        // controls.minPolarAngle = 0; // 限制相机不能旋转到平面顶部
         controls.enableZoom = true; // 允许缩放
         controls.enablePan = true; // 允许平移
         controls.rotateSpeed = 1.0; // 旋转速度
         controls.zoomSpeed = 1.0; // 缩放速度
         controls.panSpeed = 1.0; // 平移速度
-        // 限制相机只能在y轴旋转
-        // 启用相机自动旋转
-        controls.autoRotate = true;
-        controls.autoRotateSpeed = 2.0; // 设置自动旋转速度,正值为逆时针,负值为顺时针
-
-        // 创建射线检测器
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        // 鼠标滑动检测变量
-        let isCtrlPressed = false;
-        let isMousePressed = false;
-        let startX = 0;
-        let startY = 0;
-
-        // 选中的小方块
-        let selectedCubelet = null;
-        let hasPrintedDirection = false; // 添加标志，记录是否已打印方向
-        let lastDirection = null; // 记录上一次的滑动方向
-        let isAnimating = false; // 添加标志，记录是否正在动画中
-        const minSwipeDistance = 10; // 最小滑动距离
-
-        // 监听 Ctrl 键
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'Control') {
-                controls.enabled = false; // 禁用 OrbitControls
-                isCtrlPressed = true;
-            }
-        });
-
-        document.addEventListener('keyup', (event) => {
-            if (event.key === 'Control') {
-                controls.enabled = true; // 启用 OrbitControls
-                isCtrlPressed = false;
-            }
-        });
-
-        // 更新鼠标位置
-        function updateMousePosition(event) {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        }
-
-        // 检查是否点击到魔方小方块
-        function checkCubeletIntersection() {
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(cube.children);
-            
-            if (intersects.length > 0) {
-                return intersects[0].object;
-            }
-            return null;
-        }
-
-        // 监听鼠标按下
-        document.addEventListener('mousedown', (event) => {
-
-            if (isCtrlPressed) {
-                updateMousePosition(event);
-                selectedCubelet = checkCubeletIntersection();
-                if (selectedCubelet) {
-                    isMousePressed = true;
-                    startX = event.clientX;
-                    startY = event.clientY;
-                    hasPrintedDirection = false; // 重置打印标志
-                }
-            }
-        });
-
-        // 监听鼠标移动
-        document.addEventListener('mousemove', (event) => {
-            if (isMousePressed && isCtrlPressed && selectedCubelet && !hasPrintedDirection && !isAnimating) {
-                const deltaX = event.clientX - startX;
-                const deltaY = event.clientY - startY;
-                
-                // 判断滑动方向
-                if (Math.abs(deltaX) > minSwipeDistance || Math.abs(deltaY) > minSwipeDistance) {
-                    let currentDirection = null;
-                    
-                    if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                        // 水平滑动
-                        currentDirection = deltaX > 0 ? '右滑' : '左滑';
-
-                        if (currentDirection === '右滑' || currentDirection === '左滑') {
-                            isAnimating = true; // 设置动画标志
-                            // 获取选中小块的y坐标
-                            const selectedY = selectedCubelet.position.y;
-                            
-                            // 找出所有y坐标相同的小块
-                            const sameYCubelets = cube.children.filter(cubelet => {
-                                return Math.abs(cubelet.position.y - selectedY) < 0.1; // 使用小数值来处理浮点数比较
-                            });
-
-                            // 创建一个组来包含所有需要旋转的方块
-                            const rotationGroup = new THREE.Group();
-                            
-                            // 将所有同y轴的方块添加到组中
-                            sameYCubelets.forEach(cubelet => {
-                                // 保存方块的世界坐标
-                                const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
-                                const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
-                                
-                                // 从原来的父对象中移除
-                                cube.remove(cubelet);
-                                // 添加到旋转组
-                                rotationGroup.add(cubelet);
-                                
-                                // 恢复世界坐标
-                                cubelet.position.copy(worldPosition);
-                                cubelet.quaternion.copy(worldQuaternion);
-                            });
-                            
-                            // 将旋转组添加到场景
-                            scene.add(rotationGroup);
-                            
-                            // 设置旋转动画
-                            const startRotation = rotationGroup.rotation.y;
-                            const targetRotation = startRotation + (currentDirection === '右滑' ? Math.PI/2 : -Math.PI/2);
-                            const duration = 500; // 动画持续时间（毫秒）
-                            const startTime = Date.now();
-
-                            function animateRotation() {
-                                const currentTime = Date.now();
-                                const elapsed = currentTime - startTime;
-                                const progress = Math.min(elapsed / duration, 1);
-
-                                // 使用缓动函数使动画更平滑
-                                const easeProgress = progress < 0.5
-                                    ? 2 * progress * progress
-                                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-                                rotationGroup.rotation.y = startRotation + (targetRotation - startRotation) * easeProgress;
-
-                                if (progress < 1) {
-                                    requestAnimationFrame(animateRotation);
-                                } else {
-                                    // 动画完成后，将方块放回原来的魔方组中
-                                    sameYCubelets.forEach(cubelet => {
-                                        const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
-                                        const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
-                                        
-                                        rotationGroup.remove(cubelet);
-                                        cube.add(cubelet);
-                                        
-                                        cubelet.position.copy(worldPosition);
-                                        cubelet.quaternion.copy(worldQuaternion);
-                                    });
-                                    
-                                    // 从场景中移除旋转组
-                                    scene.remove(rotationGroup);
-                                    isAnimating = false; // 动画结束，重置标志
-                                }
-                            }
-
-                            // 开始动画
-                            animateRotation();
-                            
-                            console.log('同一y轴的小块:', sameYCubelets);
-                        }
-                    } else {
-                        // 垂直滑动
-                        currentDirection = deltaY > 0 ? '下滑' : '上滑';
-
-                        if (currentDirection === '上滑' || currentDirection === '下滑') {
-                            isAnimating = true; // 设置动画标志
-                            
-                            // 获取相机方向
-                            const cameraDirection = new THREE.Vector3();
-                            camera.getWorldDirection(cameraDirection);
-                            
-                            // 获取选中小块的局部坐标
-                            const localPosition = selectedCubelet.position;
-                            
-                            // 判断选中小块在哪个面上
-                            let selectedAxis = null;
-                            let selectedValue = null;
-                            let sameAxisCubelets = [];
-                            
-                            // 计算相机方向在XZ平面上的投影
-                            const cameraXZ = new THREE.Vector2(cameraDirection.x, cameraDirection.z).normalize();
-                            
-                            // 判断相机是更接近X轴还是Z轴
-                            if (Math.abs(cameraXZ.x) > Math.abs(cameraXZ.y)) {
-                                // 相机更接近X轴，旋转前后面（Z轴）
-                                selectedAxis = 'z';
-                                selectedValue = localPosition.z;
-                            } else {
-                                // 相机更接近Z轴，旋转左右面（X轴）
-                                selectedAxis = 'x';
-                                selectedValue = localPosition.x;
-                            }
-
-                            console.log(selectedAxis);
-
-                            // 找出所有在同一面上的小块
-                            sameAxisCubelets = cube.children.filter(cubelet => {
-                                return Math.abs(cubelet.position[selectedAxis] - selectedValue) < 0.1;
-                            });
-
-                            // 创建一个组来包含所有需要旋转的方块
-                            const rotationGroup = new THREE.Group();
-                            
-                            // 将所有同轴的方块添加到组中
-                            sameAxisCubelets.forEach(cubelet => {
-                                // 保存方块的世界坐标
-                                const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
-                                const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
-                                
-                                // 从原来的父对象中移除
-                                cube.remove(cubelet);
-                                // 添加到旋转组
-                                rotationGroup.add(cubelet);
-                                
-                                // 恢复世界坐标
-                                cubelet.position.copy(worldPosition);
-                                cubelet.quaternion.copy(worldQuaternion);
-                            });
-                            
-                            // 将旋转组添加到场景
-                            scene.add(rotationGroup);
-                            
-                            // 设置旋转动画
-                            const startRotation = rotationGroup.rotation[selectedAxis];
-                            
-                            // 根据相机方向调整旋转方向
-                            let rotationDirection = 1;
-                            if (selectedAxis === 'x') {
-                                // 对于X轴旋转，根据相机Z方向调整
-                                rotationDirection = cameraDirection.z > 0 ? -1 : 1;
-                                // 如果相机在正上方或正下方，根据Y方向调整
-                                if (Math.abs(cameraDirection.y) > 0.9) {
-                                    // 90度的情况
-                                    rotationDirection = cameraDirection.y > 0 ? 1 : -1;
-                                }
-                            } else if (selectedAxis === 'z') {
-                                // 对于Z轴旋转，根据相机X方向调整
-                                rotationDirection = cameraDirection.x > 0 ? 1 : -1;
-                                // 如果相机在正上方或正下方，根据Y方向调整
-                                if (Math.abs(cameraDirection.y) > 0.9) {
-                                    // 90度的情况
-                                    rotationDirection = cameraDirection.y > 0 ? -1 : 1;
-                                }
-                            }
-
-                            const targetRotation = startRotation + (currentDirection === '下滑' ? Math.PI/2 : -Math.PI/2) * rotationDirection;
-                            const duration = 500; // 动画持续时间（毫秒）
-                            const startTime = Date.now();
-
-                            function animateRotation() {
-                                const currentTime = Date.now();
-                                const elapsed = currentTime - startTime;
-                                const progress = Math.min(elapsed / duration, 1);
-
-                                // 使用缓动函数使动画更平滑
-                                const easeProgress = progress < 0.5
-                                    ? 2 * progress * progress
-                                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-                                rotationGroup.rotation[selectedAxis] = startRotation + (targetRotation - startRotation) * easeProgress;
-
-                                if (progress < 1) {
-                                    requestAnimationFrame(animateRotation);
-                                } else {
-                                    // 动画完成后，将方块放回原来的魔方组中
-                                    sameAxisCubelets.forEach(cubelet => {
-                                        const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
-                                        const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
-                                        
-                                        rotationGroup.remove(cubelet);
-                                        cube.add(cubelet);
-                                        
-                                        cubelet.position.copy(worldPosition);
-                                        cubelet.quaternion.copy(worldQuaternion);
-                                    });
-                                    
-                                    // 从场景中移除旋转组
-                                    scene.remove(rotationGroup);
-                                    isAnimating = false; // 动画结束，重置标志
-                                }
-                            }
-
-                            // 开始动画
-                            animateRotation();
-                            
-                            console.log('同一' + selectedAxis + '轴的小块:', sameAxisCubelets);
-                        }
-                    }
-
-                    // 只有当方向发生变化时才打印
-                    if (currentDirection !== lastDirection) {
-                        console.log(currentDirection);
-                        lastDirection = currentDirection;
-                        hasPrintedDirection = true;
-                    }
-                }
-            }
-        });
-
-        // 监听鼠标松开
-        document.addEventListener('mouseup', () => {
-            isMousePressed = false;
-            selectedCubelet = null;
-            hasPrintedDirection = false;
-            lastDirection = null; // 重置上一次的方向
-            if (!isAnimating) { // 只有在没有动画进行时才重置这些状态
-                isAnimating = false;
-            }
-        });
 
         // 创建魔方的材质
         const materials = [
@@ -366,14 +94,14 @@
         ];
 
         // 创建灰色材质（用于内部面）
-        const grayMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x808080, 
-            shininess: 0 
+        const grayMaterial = new THREE.MeshPhongMaterial({
+            color: 0x808080,
+            shininess: 0
         });
 
         // 创建地面
         const groundGeometry = new THREE.PlaneGeometry(200, 200);
-        const groundMaterial = new THREE.MeshPhongMaterial({ 
+        const groundMaterial = new THREE.MeshPhongMaterial({
             color: 0xcccccc,
             shininess: 0,
             side: THREE.DoubleSide
@@ -382,7 +110,7 @@
         ground.rotation.x = -Math.PI / 2; // 使平面水平
         ground.position.y = -10; // 将地面放在魔方下方
         ground.receiveShadow = true; // 接收阴影
-        scene.add(ground);
+        // scene.add(ground);
 
         // 魔方参数
         const cubeletSize = 1.8; // 小方块大小
@@ -392,17 +120,17 @@
         // 创建单个小方块
         function createCubelet(x, y, z) {
             const geometry = new THREE.BoxGeometry(cubeletSize, cubeletSize, cubeletSize);
-            
+
             // 创建六个面的材质
             const cubeMaterials = [
-                x === 1 ? materials[0] : grayMaterial,  // 右面 - 红
-                x === -1 ? materials[1] : grayMaterial, // 左面 - 绿
-                y === 1 ? materials[2] : grayMaterial,  // 顶面 - 蓝
+                x === 1 ? materials[4] : grayMaterial,  // 右面 - 橙
+                x === -1 ? materials[0] : grayMaterial, // 左面 - 红
+                y === 1 ? materials[5] : grayMaterial,  // 顶面 - 白
                 y === -1 ? materials[3] : grayMaterial, // 底面 - 黄
-                z === 1 ? materials[4] : grayMaterial,  // 前面 - 橙
-                z === -1 ? materials[5] : grayMaterial  // 后面 - 白
+                z === 1 ? materials[1] : grayMaterial,  // 前面 - 绿
+                z === -1 ? materials[2] : grayMaterial  // 后面 - 蓝
             ];
-            
+
             const cubelet = new THREE.Mesh(geometry, cubeMaterials);
             cubelet.position.set(x * spacing, y * spacing, z * spacing);
             cubelet.castShadow = true; // 投射阴影
@@ -422,44 +150,13 @@
         scene.add(cube);
 
         // 添加坐标轴辅助器
-        const axesHelper = new THREE.AxesHelper(10);
-        // cube.add(axesHelper);
-
-        // 添加坐标轴标签
-        const createLabel = (text, position, color) => {
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = 64;
-            canvas.height = 32;
-            
-            context.fillStyle = color;
-            context.font = '24px Arial';
-            context.fillText(text, 0, 24);
-            
-            const texture = new THREE.CanvasTexture(canvas);
-            const material = new THREE.SpriteMaterial({ map: texture });
-            const sprite = new THREE.Sprite(material);
-            sprite.position.copy(position);
-            sprite.scale.set(1, 0.5, 1);
-            return sprite;
-        };
-
-        // 创建 X、Y、Z 轴标签
-        const xLabel = createLabel('X', new THREE.Vector3(6, 0, 0), '#ff0000');
-        const yLabel = createLabel('Y', new THREE.Vector3(0, 6, 0), '#00ff00');
-        const zLabel = createLabel('Z', new THREE.Vector3(0, 0, 6), '#0000ff');
-        
-        // cube.add(xLabel);
-        // cube.add(yLabel);
-        // cube.add(zLabel);
+        // const axesHelper = new THREE.AxesHelper(10);
+        // scene.add(axesHelper);
 
         // 设置相机位置
         camera.position.set(30, 10, 0);
         camera.lookAt(0, 0, 0);
 
-        // 旋转魔方到标准位置
-        // cube.rotation.x = -Math.PI / 4; // 旋转45度，使白色面朝上
-        // cube.rotation.y = Math.PI / 4;  // 旋转45度，使红色面朝前
 
         // 添加环境光
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -484,10 +181,282 @@
         directionalLight2.position.set(-5, -5, -5);
         scene.add(directionalLight2);
 
+        // 在脚本开始处添加旋转状态标志
+        let isRotating = false;
+
+        let selectedCubelet = null;
+
+        // 添加鼠标按下事件监听器
+        document.addEventListener('pointerdown', (event) => {
+
+            // 创建射线投射器
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+
+            // 计算鼠标在标准化设备坐标中的位置
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // 设置射线投射器
+            raycaster.setFromCamera(mouse, camera);
+
+            // 检测射线与魔方小方块的相交
+            const intersects = raycaster.intersectObjects(cube.children);
+
+            if (intersects.length > 0) {
+                controls.enabled = false;
+                // 如果点击到了小方块，记录被选中的小方块
+                selectedCubelet = intersects[0].object;
+                // 记录起始点击位置
+                startX = event.clientX;
+                startY = event.clientY;
+                lastDirection = '';
+                console.log('选中了一个小方块');
+            } else {
+                selectedCubelet = null;
+            }
+        });
+
+        let startX = 0;
+        let startY = 0;
+        let lastDirection = '';
+
+        document.addEventListener('pointermove', (event) => {
+            if (selectedCubelet && !lastDirection && !isRotating) {
+                const deltaX = event.clientX - startX;
+                const deltaY = event.clientY - startY;
+
+                // 设置一个最小移动距离阈值，避免微小移动就触发
+                const threshold = 10;
+
+                if (Math.abs(deltaX) > threshold || Math.abs(deltaY) > threshold) {
+                    // 判断主要移动方向
+                    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                        lastDirection = deltaX > 0 ? '向右' : '向左';
+                        // 水平旋转
+                        rotateLayer(selectedCubelet, 'horizontal', lastDirection === '向右' ? 1 : -1);
+                    } else {
+                        lastDirection = deltaY > 0 ? '向下' : '向上';
+                        // 垂直旋转
+                        rotateLayer(selectedCubelet, 'vertical', lastDirection === '向下' ? 1 : -1);
+                    }
+                    console.log('滑动方向:', lastDirection);
+                }
+            }
+        });
+
+        document.addEventListener('pointerup', (event) => {
+            controls.enabled = true;
+            selectedCubelet = null;
+        });
+
+        // 添加键盘事件监听器
+        document.addEventListener('keydown', (event) => {
+            if (isRotating) return; // 如果正在旋转中，直接返回
+            rotateCube(event.key);
+        });
+
+        // 添加打乱魔方的函数
+        function scrambleCube(moves = 20) {
+            if (isRotating) return;
+
+            // 包含面旋转和整体旋转的操作
+            const allMoves = [
+                // 面旋转
+                { type: 'layer', direction: 'vertical', value: 1 },    // 下滑
+                { type: 'layer', direction: 'vertical', value: -1 },   // 上滑
+                { type: 'layer', direction: 'horizontal', value: 1 },  // 右滑
+                { type: 'layer', direction: 'horizontal', value: -1 }, // 左滑
+                // { type: 'cube', key: 'w' },     // 整体向上
+                // { type: 'cube', key: 's' },     // 整体向下
+                // { type: 'cube', key: 'a' },     // 整体向左
+                // { type: 'cube', key: 'd' },     // 整体向右
+            ];
+
+            let moveCount = 0;
+
+            function makeNextMove() {
+                if (moveCount >= moves) {
+                    return; // 达到指定步数后停止
+                }
+                
+                if (!isRotating) {
+                    // 随机选择一个操作
+                    const randomMove = allMoves[Math.floor(Math.random() * allMoves.length)];
+
+                    if (randomMove.type === 'layer') {
+                        // 随机选择一个非中心块的方块
+                        let selectedCube;
+                        let isCenter = false;
+                        do {
+                            selectedCube = cube.children[Math.floor(Math.random() * cube.children.length)];
+                            const pos = selectedCube.getWorldPosition(new THREE.Vector3());
+                            // 检查是否为中心块(至少有两个坐标接近0)
+                            const isCenter = [Math.abs(pos.x), Math.abs(pos.y), Math.abs(pos.z)].filter(coord => Math.abs(coord) < 0.1).length >= 2;
+                        } while (isCenter);
+
+                        // 执行面旋转
+                        rotateLayer(selectedCube, randomMove.direction, randomMove.value);
+                    } else {
+                        // 执行整体旋转
+                        rotateCube(randomMove.key);
+                    }
+                    moveCount++;
+                    // 等待当前动画完成后继续下一步
+                    setTimeout(makeNextMove, 350);
+                }
+            }
+
+            makeNextMove();
+        }
+
+        // 提取通用的旋转动画方法
+        function animateRotation(rotationAxis, rotationAngle) {
+            rotationAxis.normalize(); // 确保是单位向量
+            const start = { angle: 0 };
+            const end = { angle: rotationAngle };
+            let previousAngle = 0;
+            new TWEEN.Tween(start)
+                .to(end, 300) // 持续 1000ms
+                .easing(TWEEN.Easing.Linear.None) // 线性匀速 (模拟你原来固定step)
+                .onUpdate(() => {
+                    const deltaAngle = start.angle - previousAngle;
+                    cube.rotateOnWorldAxis(rotationAxis, deltaAngle);
+                    previousAngle = start.angle;
+                })
+                .onComplete(() => {
+                    isRotating = false;
+                })
+                .start();
+        }
+
+        // 添加打乱按钮的事件监听器
+        document.getElementById('scrambleButton').addEventListener('click', () => {
+            scrambleCube(20); // 执行20次随机移动
+        });
+
+        function rotateCube(key) {
+            if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'w' || key === 's') {
+                isRotating = true;
+                const rotationDirection = key === 'ArrowUp' || key === 'w' ? -1 : 1;
+                const cameraDirection = camera.position.clone().sub(cube.position).normalize();
+                const { x: dirX, z: dirZ } = cameraDirection;
+                const isMainlyX = Math.abs(dirX) > Math.abs(dirZ);
+                const rotationAxis = isMainlyX ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+                const rotationAngle = Math.PI / 2 * rotationDirection * (isMainlyX ? -Math.sign(dirX) : Math.sign(dirZ));
+
+                animateRotation(rotationAxis, rotationAngle);
+            }
+
+            if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'a' || key === 'd') {
+                isRotating = true;
+                const rotationDirection = key === 'ArrowLeft' || key === 'a' ? -1 : 1;
+                const rotationAxis = new THREE.Vector3(0, 1, 0);
+                const rotationAngle = Math.PI / 2 * rotationDirection;
+                animateRotation(rotationAxis, rotationAngle);
+            }
+        }
+
+        // 提取旋转层的通用方法
+        function rotateLayer(selectedCubelet, direction, rotationDirection) {
+            isRotating = true;
+
+            // 根据方向确定旋转轴和角度
+            let rotationAxis, rotationAngle;
+            if (direction === 'horizontal') {
+                rotationAxis = new THREE.Vector3(0, 1, 0);
+                rotationAngle = Math.PI / 2 * rotationDirection;
+            } else {
+                const cameraDirection = camera.position.clone().sub(cube.getWorldPosition(new THREE.Vector3())).normalize();
+                const { x: dirX, z: dirZ } = cameraDirection;
+                const isMainlyX = Math.abs(dirX) > Math.abs(dirZ);
+                rotationAxis = isMainlyX ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+                rotationAngle = Math.PI / 2 * rotationDirection * (isMainlyX ? -Math.sign(dirX) : Math.sign(dirZ));
+            }
+
+            // 找出所有在同一轴上的小方块
+            const sameAxisCubelets = cube.children.filter(cubelet => {
+                const projection = cubelet.getWorldPosition(new THREE.Vector3()).dot(rotationAxis);
+                const selectedProjection = selectedCubelet.getWorldPosition(new THREE.Vector3()).dot(rotationAxis);
+                return Math.abs(projection - selectedProjection) < 0.1;
+            });
+
+            // 创建旋转组
+            const rotationGroup = new THREE.Group();
+
+            // 将同轴小方块添加到旋转组
+            sameAxisCubelets.forEach(cubelet => {
+                const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
+                const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
+
+                cube.remove(cubelet);
+                rotationGroup.add(cubelet);
+
+                cubelet.position.copy(worldPosition);
+                cubelet.quaternion.copy(worldQuaternion);
+            });
+
+            scene.add(rotationGroup);
+
+            // 创建旋转动画
+            const start = { angle: 0 };
+            const end = { angle: rotationAngle };
+            let previousAngle = 0;
+
+            // 保存旋转组中所有方块的引用
+            const cubeletsInGroup = [...rotationGroup.children];
+
+            new TWEEN.Tween(start)
+                .to(end, 300)
+                .easing(TWEEN.Easing.Quadratic.Out)
+                .onUpdate(() => {
+                    const deltaAngle = start.angle - previousAngle;
+                    rotationGroup.rotateOnWorldAxis(rotationAxis, deltaAngle);
+                    previousAngle = start.angle;
+                })
+                .onComplete(() => {
+                    // 使用保存的引用来处理所有方块
+                    cubeletsInGroup.forEach(cubelet => {
+                        // 保存世界坐标
+                        const worldPosition = cubelet.getWorldPosition(new THREE.Vector3());
+                        const worldQuaternion = cubelet.getWorldQuaternion(new THREE.Quaternion());
+
+                        // 从旋转组中移除
+                        rotationGroup.remove(cubelet);
+                        // 添加回魔方
+                        cube.add(cubelet);
+
+                        // 恢复世界坐标
+                        // 将世界坐标转换为相对于cube的本地坐标
+                        const localPosition = new THREE.Vector3();
+                        const localQuaternion = new THREE.Quaternion();
+
+                        // 获取cube的世界变换矩阵的逆矩阵
+                        const cubeWorldMatrixInverse = new THREE.Matrix4();
+                        cubeWorldMatrixInverse.copy(cube.matrixWorld).invert();
+
+                        // 将世界坐标转换为相对于cube的本地坐标
+                        localPosition.copy(worldPosition).applyMatrix4(cubeWorldMatrixInverse);
+                        localQuaternion.copy(worldQuaternion).premultiply(cube.quaternion.clone().invert());
+
+                        // 应用本地坐标
+                        cubelet.position.copy(localPosition);
+                        cubelet.quaternion.copy(localQuaternion);
+                    });
+
+                    // 从场景中移除旋转组
+                    scene.remove(rotationGroup);
+                    lastDirection = '';
+                    isRotating = false;
+                })
+                .start();
+        }
+
         // 动画循环
         function animate() {
             requestAnimationFrame(animate);
             controls.update(); // 更新控制器
+            TWEEN.update();
             renderer.render(scene, camera);
         }
 
@@ -501,4 +470,5 @@
         animate();
     </script>
 </body>
+
 </html>
